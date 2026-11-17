@@ -617,9 +617,27 @@ def _sanitize_plan(
     for index, subquery in enumerate((raw.get("subqueries") or [])[:_max_subqueries(intent_hint, topic)], start=1):
         if not isinstance(subquery, dict):
             continue
-        sources = [source for source in subquery.get("sources") or [] if source in source_weights]
+        raw_sources = [
+            source for source in (subquery.get("sources") or [])
+            if isinstance(source, str)
+        ]
+        sources = [source for source in raw_sources if source in source_weights]
         if requested:
             sources = [source for source in sources if source in requested]
+        if honor_plan_sources:
+            dropped = [source for source in raw_sources if source not in sources]
+            if dropped:
+                # A named source that never reaches a subquery used to vanish.
+                # Say which ones, on captured stderr as well as a TTY.
+                log.source_log(
+                    "Planner",
+                    "External plan named "
+                    + ", ".join(dropped)
+                    + " but they are not in the runnable set "
+                    "(unavailable, excluded, or omitted from --search). "
+                    "They were not scheduled.",
+                    tty_only=False,
+                )
         if not sources:
             if honor_plan_sources:
                 label = str(subquery.get("label") or f"q{index}")
@@ -728,6 +746,42 @@ def _normalize_weights(weights: dict[str, float]) -> dict[str, float]:
     }
 
 
+def _keep_explicit_plan_sources(
+    subqueries: list[schema.SubQuery],
+    available_sources: list[str],
+    requested_sources: list[str] | None,
+) -> list[schema.SubQuery]:
+    """Keep every source an explicit plan named that this run can still search.
+
+    ``--search`` stays replace-not-add: a source omitted from that list is not
+    put back. Availability was already applied by the sanitizer. Nothing here
+    invents a source the plan did not name, and nothing here applies the quick
+    source cap.
+    """
+    available = set(available_sources)
+    requested = set(requested_sources or [])
+    kept_plans: list[schema.SubQuery] = []
+    for subquery in subqueries:
+        kept: list[str] = []
+        for source in subquery.sources:
+            if source not in available:
+                continue
+            if requested and source not in requested:
+                continue
+            if source not in kept:
+                kept.append(source)
+        kept_plans.append(
+            schema.SubQuery(
+                label=subquery.label,
+                search_query=subquery.search_query,
+                ranking_query=subquery.ranking_query,
+                sources=kept,
+                weight=subquery.weight,
+            )
+        )
+    return kept_plans
+
+
 def _trim_subqueries_for_depth(
     subqueries: list[schema.SubQuery],
     intent: str,
@@ -757,6 +811,14 @@ def _trim_subqueries_for_depth(
             )
             for subquery in subqueries
         ]
+    # An explicit --plan lists the sources the host asked to run. The quick
+    # two-source budget applies to engine-made plans only. Capping a host plan
+    # here dropped Polymarket and GitHub with no log line while X and Hacker
+    # News filled the two concept slots.
+    if honor_plan_sources:
+        return _keep_explicit_plan_sources(
+            subqueries, available_sources, requested_sources,
+        )
     limits = SOURCE_LIMITS.get(depth)
     if not limits:
         return subqueries
@@ -768,12 +830,9 @@ def _trim_subqueries_for_depth(
         ranked_sources = list(available_sources)
     trimmed = []
     for subquery in subqueries:
-        # Quick depth only reaches this block. Honor the plan's explicit
-        # per-subquery sources: prefer priority-ranked plan sources first, then
-        # append any plan sources absent from the priority table (e.g.
-        # instagram). Explicit --search sources are user overrides, so they get
-        # first claim on the quick slots when present. The final list remains
-        # capped to the quick-depth limit.
+        # Quick depth, engine-made plans only. Prefer priority-ranked sources,
+        # then any source absent from the priority table. Explicit --search
+        # sources get first claim on the quick slots. The list stays capped.
         plan_sources = [s for s in ranked_sources if s in subquery.sources]
         for source in subquery.sources:
             if source not in plan_sources:
