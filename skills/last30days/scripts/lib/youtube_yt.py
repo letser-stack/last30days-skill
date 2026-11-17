@@ -56,6 +56,9 @@ TRANSCRIPT_LIMITS = {
 # fetched instead: those failures are the network, not a stale binary.
 _TRANSCRIPT_FETCH_STATS = {
     "attempts": 0, "failures": 0, "target": 0, "blocked": 0, "sc_rescued": 0,
+    # Quick depth sets the transcript target to 0 and does not call yt-dlp
+    # for captions. That is a skip, not a failed fetch and not a version check.
+    "not_requested": 0,
 }
 _TRANSCRIPT_FETCH_STATS_LOCK = threading.Lock()
 
@@ -1982,6 +1985,7 @@ def _search_and_transcribe(
         )
     else:
         _log(f"Transcript limit is 0 for depth={depth}, skipping transcript fetch")
+        _add_transcript_fetch_stats(not_requested=1)
 
     # Step 3: Attach transcripts and extract highlights. Mark captions_disabled
     # so quality_nudge can subtract those videos from the degraded-ratio

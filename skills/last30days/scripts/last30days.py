@@ -3790,6 +3790,7 @@ def _quality_research_results(report, diag, yt_fetch_stats):
         "youtube_transcript_fetch_attempts": yt_fetch_stats["attempts"],
         "youtube_transcript_fetch_failures": yt_fetch_stats["failures"],
         "youtube_transcript_target": yt_fetch_stats.get("target", 0),
+        "youtube_transcripts_not_requested": bool(yt_fetch_stats.get("not_requested")),
         "youtube_bot_checked": yt_fetch_stats.get("blocked", 0),
         "youtube_sc_rescued": yt_fetch_stats.get("sc_rescued", 0),
         "instagram_items_count": len(instagram_items),

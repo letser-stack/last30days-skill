@@ -227,5 +227,55 @@ def test_tiktok_with_a_key_uses_the_adapter(monkeypatch):
     assert result.get("error") != "No SCRAPECREATORS_API_KEY configured"
 
 
+def _quick_youtube_results():
+    return {
+        "source_run_status": {
+            "youtube": {"source": "youtube", "status": "ok_results", "count": 1},
+            "hackernews": {"source": "hackernews", "status": "ok_results", "count": 6},
+            "x": {"source": "x", "status": "ok_results", "count": 6},
+            "polymarket": {"source": "polymarket", "status": "ok_zero", "count": 0},
+            "github": {"source": "github", "status": "ok_zero", "count": 0},
+            "reddit": {"source": "reddit", "status": "not_run", "reason": "not_in_plan", "count": 0},
+            "tiktok": {"source": "tiktok", "status": "blocked_missing_credential", "count": 0},
+            "instagram": {"source": "instagram", "status": "blocked_missing_credential", "count": 0},
+        },
+        "active_sources": ["youtube", "hackernews", "x", "polymarket", "github"],
+        "youtube_videos_count": 1,
+        "youtube_transcripts_count": 0,
+        "youtube_transcript_fetch_attempts": 0,
+        "youtube_transcript_fetch_failures": 0,
+        "youtube_transcript_target": 0,
+    }
+
+
+def test_quick_transcript_skip_is_not_a_stale_ytdlp_nudge():
+    """--quick sets the transcript target to 0. Zero captions is that skip."""
+    results = _quick_youtube_results()
+    results["youtube_transcripts_not_requested"] = True
+    quality = quality_nudge.compute_quality_score({}, results)
+    text = quality["nudge_text"] or ""
+    assert "youtube" in quality["core_active"]
+    assert "youtube" not in quality["core_degraded"]
+    assert "Degraded: YouTube" not in text
+    assert "stale" not in text.lower()
+    assert "update yt-dlp" not in text.lower()
+    assert quality_nudge._is_youtube_degraded(results, 0.5) is False
+
+
+def test_failed_transcript_fetches_still_mark_youtube_degraded():
+    """A real fetch that fails is not the quick skip and is not a version guess."""
+    results = _quick_youtube_results()
+    results["youtube_transcripts_not_requested"] = False
+    results["youtube_transcript_fetch_attempts"] = 2
+    results["youtube_transcript_fetch_failures"] = 2
+    results["youtube_videos_count"] = 2
+    results["youtube_transcript_target"] = 2
+    quality = quality_nudge.compute_quality_score({}, results)
+    text = quality["nudge_text"] or ""
+    assert "youtube" in quality["core_degraded"]
+    assert "Degraded: YouTube" in text
+    assert "transcript" in text.lower()
+
+
 def test_polymarket_module_is_the_public_search_used_by_the_pipeline():
     assert polymarket.search_polymarket.__module__ == "lib.polymarket"

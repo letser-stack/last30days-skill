@@ -154,6 +154,12 @@ def _is_youtube_degraded(research_results: dict, threshold: float) -> bool:
     captions_disabled = int(research_results.get("youtube_captions_disabled_count") or 0)
     if videos <= 0:
         return False
+    # Quick depth's transcript target is 0: the engine does not fetch captions.
+    # Zero transcripts then are the skip, not evidence the yt-dlp binary is old
+    # and not a failed fetch. A later real attempt (attempts > 0) is judged below.
+    fetch_attempts_early = int(research_results.get("youtube_transcript_fetch_attempts") or 0)
+    if research_results.get("youtube_transcripts_not_requested") and fetch_attempts_early == 0:
+        return False
     fetch_attempts = int(research_results.get("youtube_transcript_fetch_attempts") or 0)
     fetch_failures = int(research_results.get("youtube_transcript_fetch_failures") or 0)
     if fetch_attempts > 0 and fetch_failures == 0:

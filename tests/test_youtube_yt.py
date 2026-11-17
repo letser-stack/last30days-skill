@@ -677,12 +677,17 @@ class TestSearchAndTranscribe(unittest.TestCase):
     def test_transcript_limit_zero_skips_fetch(self):
         """When transcript_limit is 0 (quick depth), no transcripts are fetched."""
         items = [self._make_item("vid1", 1000)]
+        youtube_yt.reset_transcript_fetch_stats()
         with mock.patch.object(youtube_yt, "search_youtube", return_value={"items": items}), \
              mock.patch.object(youtube_yt, "fetch_transcripts_parallel") as ft_mock:
             result = youtube_yt.search_and_transcribe("test", "2026-03-01", "2026-03-31", depth="quick")
 
         ft_mock.assert_not_called()
         self.assertEqual(result["items"][0]["transcript_snippet"], "")
+        stats = youtube_yt.get_transcript_fetch_stats()
+        self.assertEqual(stats["not_requested"], 1)
+        self.assertEqual(stats["attempts"], 0)
+        self.assertEqual(stats["failures"], 0)
 
     def test_no_items_returns_early(self):
         """When search returns no items, returns without fetching transcripts."""
