@@ -3745,6 +3745,21 @@ def main() -> int:
     return _main(parser, args, extra_argv)
 
 
+def _source_run_status_map(report) -> dict:
+    """Rows recorded by the pipeline, ignoring test doubles that are not dicts."""
+    artifacts = getattr(report, "artifacts", None)
+    if not isinstance(artifacts, dict):
+        return {}
+    rows = artifacts.get("source_run_status")
+    if not isinstance(rows, list):
+        return {}
+    return {
+        str(row.get("source")): row
+        for row in rows
+        if isinstance(row, dict) and row.get("source")
+    }
+
+
 def _quality_research_results(report, diag, yt_fetch_stats):
     youtube_items = report.items_by_source.get("youtube") or []
     instagram_items = report.items_by_source.get("instagram") or []
@@ -3778,6 +3793,7 @@ def _quality_research_results(report, diag, yt_fetch_stats):
         "youtube_bot_checked": yt_fetch_stats.get("blocked", 0),
         "youtube_sc_rescued": yt_fetch_stats.get("sc_rescued", 0),
         "instagram_items_count": len(instagram_items),
+        "source_run_status": _source_run_status_map(report),
     }
 
 
@@ -5166,6 +5182,11 @@ def _main(
         try:
             from lib import quality_nudge
             from lib import youtube_yt as _youtube_yt
+            artifacts = getattr(report, "artifacts", None)
+            status_lines = artifacts.get("source_run_status_lines") if isinstance(artifacts, dict) else None
+            for line in status_lines or []:
+                sys.stderr.write(f"{line}\n")
+            sys.stderr.flush()
             research_results = _quality_research_results(
                 report, diag, _youtube_yt.get_transcript_fetch_stats()
             )

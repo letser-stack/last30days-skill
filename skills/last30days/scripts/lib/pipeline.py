@@ -2289,6 +2289,9 @@ def run(
         youtube_yt.reset_search_cache()
     settings = _resolve_depth_settings(depth, config)
     requested_sources = normalize_requested_sources(requested_sources)
+    # The list the user passed, before later lanes append themselves. Coverage
+    # uses it to tell "excluded by --search" from "never named".
+    user_search_list = list(requested_sources) if requested_sources else None
     # Wall-clock origin for budget-aware enrichment lanes. Amazon review
     # enrichment starts at search time (inside _retrieve_stream_impl) so it
     # overlaps other sources instead of waiting for them all to finish.
@@ -3447,6 +3450,24 @@ def run(
     if library_warning:
         warnings.append(library_warning)
     bundle.artifacts["usage"] = reasoning_provider.total_usage if reasoning_provider else None
+    named_sources: list[str] = []
+    if isinstance(external_plan, dict):
+        for subquery in external_plan.get("subqueries") or []:
+            if not isinstance(subquery, dict):
+                continue
+            for source in subquery.get("sources") or []:
+                if isinstance(source, str) and source not in named_sources:
+                    named_sources.append(source)
+    from . import quality_nudge
+    status_rows = quality_nudge.build_source_run_status(
+        named_sources=named_sources,
+        search_list=user_search_list,
+        items_by_source=items_by_source,
+        source_status=source_status,
+        config=config,
+    )
+    bundle.artifacts["source_run_status"] = status_rows
+    bundle.artifacts["source_run_status_lines"] = quality_nudge.render_source_run_status(status_rows)
 
     return schema.Report(
         topic=topic,

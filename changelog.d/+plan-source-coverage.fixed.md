@@ -1,0 +1,1 @@
+Explicit `--plan` sources are no longer dropped by the `--quick` two-source cap, and the coverage footer counts a core source only when that run actually searched it. Stderr prints a `[source-status]` line per source (`not_run`, `unavailable`, `error`, `ok_zero`, `ok_results`, `blocked_missing_credential`).
